@@ -1,0 +1,49 @@
+// This class lives in the TeamCode folder of your FTC project
+package org.firstinspires.ftc.teamcode;
+
+// Import FTC SDK classes for motor control and OpMode structure
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+
+// Register this class as a TeleOp mode named "Two Motor Drive"
+@TeleOp(name = "Two Motor Drive", group = "Basic")
+public class TwoMotorDrive extends LinearOpMode {
+
+    // This method runs when the driver presses "Play" on the Driver Station
+    @Override
+    public void runOpMode() {
+        // Link motor variables to the robot configuration names
+        DcMotor leftMotor = hardwareMap.get(DcMotor.class, "left_motor");
+        DcMotor rightMotor = hardwareMap.get(DcMotor.class, "right_motor");
+
+        // Display status on the Driver Station before starting
+        telemetry.addData("Status", "Initialized");
+        telemetry.update();
+
+        // Wait until the driver presses "Play"
+        waitForStart();
+
+        // Main control loop — runs continuously during TeleOp
+        while (opModeIsActive()) {
+            // Read joystick input:
+            // - Left stick Y controls forward/backward
+            // - Right stick X controls turning
+            double drive = -gamepad1.left_stick_y;
+            double turn = gamepad1.right_stick_x;
+
+            // Combine drive and turn for arcade-style control
+            double leftPower = drive + turn;
+            double rightPower = drive - turn;
+
+            // Clip motor power values to stay within [-1.0, 1.0]
+            leftPower = Math.max(-1.0, Math.min(1.0, leftPower));
+            rightPower = Math.max(-1.0, Math.min(1.0, rightPower));
+
+            // Send calculated power to motors
+            leftMotor.setPower(leftPower);
+            rightMotor.setPower(rightPower);
+
+            // Display motor power values for debugging
+            telemetry.addData("Left Power", leftPower);
+        }}}

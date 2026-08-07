@@ -3,6 +3,9 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DistanceSensor;
+
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 @TeleOp(name = "GamePad")
 public class GamePad extends OpMode {
@@ -12,15 +15,18 @@ public class GamePad extends OpMode {
     private DcMotor MotorBR;
     private DcMotor MotorBL;
 
+    private DistanceSensor distanceSensor;
+
     @Override
     public void init() {
 
+        // Motors
         MotorTR = hardwareMap.get(DcMotor.class, "front right");
         MotorTL = hardwareMap.get(DcMotor.class, "front left");
         MotorBR = hardwareMap.get(DcMotor.class, "back right");
         MotorBL = hardwareMap.get(DcMotor.class, "back left");
 
-        // Reverse the right side
+        // Reverse right side motors
         MotorTR.setDirection(DcMotor.Direction.REVERSE);
         MotorBR.setDirection(DcMotor.Direction.REVERSE);
 
@@ -28,13 +34,12 @@ public class GamePad extends OpMode {
         MotorTL.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         MotorBR.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         MotorBL.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-    }
 
-    public void setMotorSpeed(double speed) {
-        MotorTR.setPower(speed);
-        MotorTL.setPower(speed);
-        MotorBR.setPower(speed);
-        MotorBL.setPower(speed);
+        // Distance Sensor
+        distanceSensor = hardwareMap.get(DistanceSensor.class, "distance");
+
+        telemetry.addLine("Robot Initialized");
+        telemetry.update();
     }
 
     @Override
@@ -42,10 +47,10 @@ public class GamePad extends OpMode {
 
         // Controller inputs
         double forward = gamepad1.left_stick_y;
-        double strafe = -gamepad1.left_stick_x;
-        double rotate = -gamepad1.right_stick_x;
+        double strafe  = -gamepad1.left_stick_x;
+        double rotate  = -gamepad1.right_stick_x;
 
-        // Mecanum drive calculations
+        // Mecanum calculations
         double frontLeftPower  = forward + strafe + rotate;
         double backLeftPower   = forward - strafe + rotate;
         double frontRightPower = forward - strafe - rotate;
@@ -63,21 +68,37 @@ public class GamePad extends OpMode {
             frontRightPower /= max;
             backRightPower /= max;
         }
+        double speedMultiplier = 0.5;
 
-        // Set motor powers
+        if (gamepad1.left_bumper) {
+            speedMultiplier = 1.0;
+        } else if (gamepad1.right_bumper) {
+            speedMultiplier = 0.25;
+        }
+
+// Apply speed multiplier
+        frontLeftPower *= speedMultiplier;
+        backLeftPower *= speedMultiplier;
+        frontRightPower *= speedMultiplier;
+        backRightPower *= speedMultiplier;
+
+
+        // Drive motors
         MotorTL.setPower(frontLeftPower);
         MotorTR.setPower(frontRightPower);
         MotorBL.setPower(backLeftPower);
         MotorBR.setPower(backRightPower);
 
+        // Read distance
+        double distanceCM = distanceSensor.getDistance(DistanceUnit.CM);
+
         // Telemetry
-        telemetry.addData("Forward", forward);
-        telemetry.addData("Strafe", strafe);
-        telemetry.addData("Rotate", rotate);
-        telemetry.addData("FL", frontLeftPower);
-        telemetry.addData("FR", frontRightPower);
-        telemetry.addData("BL", backLeftPower);
-        telemetry.addData("BR", backRightPower);
+        telemetry.addData("Distance (cm)", "%.1f", distanceCM);
+
+        if (distanceCM < 10) {
+            telemetry.addLine("⚠ Object Very Close!");
+        }
+
         telemetry.update();
     }
 }

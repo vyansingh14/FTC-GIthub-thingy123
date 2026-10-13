@@ -2,13 +2,10 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DistanceSensor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.util.ElapsedTime;
-import com.qualcomm.robotcore.util.Range;
-
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 @TeleOp(name = "GamePad")
 public class GamePad extends OpMode {
@@ -18,23 +15,20 @@ public class GamePad extends OpMode {
     private static final double SPEED_NORMAL = 0.5;
     private static final double SPEED_SLOW   = 0.25;
 
-    // ---- Tunable constants: launcher servo ----
-    // Servo positions MUST be between 0.0 and 1.0.
-    private static final double SERVO_HOME_POSITION      = 0.22;
-    private static final double SERVO_LAUNCH_POSITION    = 1.0; // adjust to whatever position actually fires the launcher
-    private static final long   SERVO_LAUNCH_DURATION_MS = 300;
+    // ---- Tunable constants: intake ----
+    // Continuous servos take power from -1.0 to 1.0. Flip the sign if the intake spins the wrong way.
+    private static final double INTAKE_SERVO_POWER = 1.0;
+    private static final double INTAKE_MOTOR_POWER = 1.0;
 
-    private static final double CLOSE_OBJECT_THRESHOLD_CM = 10;
+    // ---- Tunable constants: launcher ----
+    // Feeder is a continuous servo: power from -1.0 to 1.0. Flip the sign if it spins the wrong way.
+    private static final double FEEDER_POWER = 1.0;
+
+    private static final double LAUNCHER_MOTOR_POWER = 1.0;
 
     // ---- Tunable constants: arm ----
-    // Base and elbow are driven proportionally by the joysticks, so these are
-    // "position change per loop iteration" values, not absolute positions.
-    // Tune these until the arm moves at a comfortable speed.
-    private static final double ARM_BASE_SERVO_SPEED  = 0.01;
-    private static final double ARM_ELBOW_SERVO_SPEED = 0.01;
-
-    private static final double ARM_BASE_START_POSITION  = 0.5;
-    private static final double ARM_ELBOW_START_POSITION = 0.5;
+    // Elbow is a DC motor, so this is a power multiplier (0.0 to 1.0).
+    private static final double ARM_ELBOW_POWER = 0.5;
 
     private static final double CLAW_OPEN_POSITION   = 0.6;
     private static final double CLAW_CLOSED_POSITION = 0.3;
@@ -48,24 +42,30 @@ public class GamePad extends OpMode {
     private DcMotor motorFrontLeft;
     private DcMotor motorBackRight;
     private DcMotor motorBackLeft;
-    private DistanceSensor distanceSensor; // optional: null if not found
-    private Servo launcherServo;           // optional: null if not found
+
+    // ---- Hardware: intake (gamepad1) ----
+    private CRServo intakeServoLeft;  // optional: null if not found
+    private CRServo intakeServoRight; // optional: null if not found
+    private DcMotor intakeMotor;      // optional: null if not found
+
+    // ---- Hardware: launcher (gamepad1) ----
+    private CRServo feederServo;   // optional: null if not found
+    private DcMotor launcherMotor; // optional: null if not found
 
     // ---- Hardware: arm (gamepad2) ----
-    private Servo armBaseServo;   // optional: null if not found
-    private Servo armElbowServo;  // optional: null if not found
-    private Servo armClawServo;   // optional: null if not found
+    private DcMotor armElbowMotor; // optional: null if not found
+    private Servo armClawServo;    // optional: null if not found
 
-    // ---- Launcher servo state ----
+    // ---- Intake state ----
+    private boolean lastX = false;
+    private boolean intakeOn = false;
+
+    // ---- Launcher state ----
     private boolean lastA = false;
-    private boolean servoMoving = false;
-    private final ElapsedTime servoTimer = new ElapsedTime();
+    private boolean feederOn = false;
 
-    // ---- Arm state ----
-    // Tracked in code because you can't read the current position back from a
-    // standard servo; these track where we last told it to go.
-    private double armBasePosition  = ARM_BASE_START_POSITION;
-    private double armElbowPosition = ARM_ELBOW_START_POSITION;
+    private boolean lastB = false;
+    private boolean launcherOn = false;
 
     @Override
     public void init() {
@@ -88,36 +88,57 @@ public class GamePad extends OpMode {
             motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         }
 
-        // Sensor and launcher servo are optional: the robot can still drive if they're missing.
+        // Intake and launcher parts are optional: the robot can still drive if they're missing.
         try {
-            distanceSensor = hardwareMap.get(DistanceSensor.class, "distance");
+            intakeServoLeft = hardwareMap.get(CRServo.class, "intakeServoLeft");
         } catch (Exception e) {
-            telemetry.addLine("ERROR: distance sensor 'distance' not found");
+            intakeServoLeft = null;
+            telemetry.addLine("ERROR: servo 'intakeServoLeft' not found");
         }
 
         try {
-            launcherServo = hardwareMap.get(Servo.class, "launcherServo");
-            launcherServo.setPosition(SERVO_HOME_POSITION);
+            intakeServoRight = hardwareMap.get(CRServo.class, "intakeServoRight");
+            // The two intake servos face each other, so one is reversed to pull the ball in.
+            // Remove this line if both servos end up spinning the same way physically.
+            intakeServoRight.setDirection(DcMotorSimple.Direction.REVERSE);
         } catch (Exception e) {
-            launcherServo = null;
-            telemetry.addLine("ERROR: servo 'launcherServo' not found");
-        }
-
-        // Arm servos are optional too, so a missing one doesn't take down the whole OpMode.
-        try {
-            armBaseServo = hardwareMap.get(Servo.class, "armBaseServo");
-            armBaseServo.setPosition(armBasePosition);
-        } catch (Exception e) {
-            armBaseServo = null;
-            telemetry.addLine("ERROR: servo 'armBaseServo' not found");
+            intakeServoRight = null;
+            telemetry.addLine("ERROR: servo 'intakeServoRight' not found");
         }
 
         try {
-            armElbowServo = hardwareMap.get(Servo.class, "armElbowServo");
-            armElbowServo.setPosition(armElbowPosition);
+            intakeMotor = hardwareMap.get(DcMotor.class, "intakeMotor");
+            intakeMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         } catch (Exception e) {
-            armElbowServo = null;
-            telemetry.addLine("ERROR: servo 'armElbowServo' not found");
+            intakeMotor = null;
+            telemetry.addLine("ERROR: motor 'intakeMotor' not found");
+        }
+
+        try {
+            feederServo = hardwareMap.get(CRServo.class, "feederServo");
+        } catch (Exception e) {
+            feederServo = null;
+            telemetry.addLine("ERROR: servo 'feederServo' not found");
+        }
+
+        try {
+            launcherMotor = hardwareMap.get(DcMotor.class, "launcherMotor");
+            launcherMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            // FLOAT lets the launcher wheel spin down on its own instead of slamming to a stop.
+            launcherMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        } catch (Exception e) {
+            launcherMotor = null;
+            telemetry.addLine("ERROR: motor 'launcherMotor' not found");
+        }
+
+        // Elbow motor and claw servo are optional so a missing one doesn't take down the OpMode.
+        try {
+            armElbowMotor = hardwareMap.get(DcMotor.class, "armElbowMotor");
+            armElbowMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            armElbowMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        } catch (Exception e) {
+            armElbowMotor = null;
+            telemetry.addLine("ERROR: motor 'armElbowMotor' not found");
         }
 
         try {
@@ -134,15 +155,16 @@ public class GamePad extends OpMode {
 
     @Override
     public void loop() {
-        // gamepad1 drives the robot, gamepad2 runs the arm.
+        // gamepad1 drives, runs the intake and the launcher. gamepad2 only runs the arm and claw.
         driveMecanum();
+        handleIntake();
         handleLauncher();
         handleArm();
         updateTelemetry();
     }
 
     private void driveMecanum() {
-        double forward = -gamepad1.left_stick_y;
+        double forward = gamepad1.left_stick_y;
         double strafe  = -gamepad1.left_stick_x;
         double rotate  = -gamepad1.right_stick_x;
 
@@ -176,44 +198,58 @@ public class GamePad extends OpMode {
         motorBackRight.setPower(backRightPower * speedMultiplier);
     }
 
-    private void handleLauncher() {
-        if (launcherServo == null) return;
+    private void handleIntake() {
+        // X toggles the whole intake (both continuous servos + the intake motor) on and off.
+        boolean xPressed = gamepad1.x && !lastX;
+        lastX = gamepad1.x;
 
+        if (xPressed) {
+            intakeOn = !intakeOn;
+        }
+
+        double servoPower = intakeOn ? INTAKE_SERVO_POWER : 0.0;
+        if (intakeServoLeft != null)  intakeServoLeft.setPower(servoPower);
+        if (intakeServoRight != null) intakeServoRight.setPower(servoPower);
+        if (intakeMotor != null)      intakeMotor.setPower(intakeOn ? INTAKE_MOTOR_POWER : 0.0);
+    }
+
+    private void handleLauncher() {
+        // A toggles the feeder servo, which keeps spinning to move balls up to the launcher motor.
         boolean aPressed = gamepad1.a && !lastA;
         lastA = gamepad1.a;
 
-        if (aPressed && !servoMoving) {
-            launcherServo.setPosition(SERVO_LAUNCH_POSITION);
-            servoMoving = true;
-            servoTimer.reset();
+        if (aPressed) {
+            feederOn = !feederOn;
         }
 
-        if (servoMoving && servoTimer.milliseconds() >= SERVO_LAUNCH_DURATION_MS) {
-            launcherServo.setPosition(SERVO_HOME_POSITION);
-            servoMoving = false;
+        if (feederServo != null) {
+            feederServo.setPower(feederOn ? FEEDER_POWER : 0.0);
+        }
+
+        // B toggles the launcher motor on and off.
+        boolean bPressed = gamepad1.b && !lastB;
+        lastB = gamepad1.b;
+
+        if (bPressed) {
+            launcherOn = !launcherOn;
+        }
+
+        if (launcherMotor != null) {
+            launcherMotor.setPower(launcherOn ? LAUNCHER_MOTOR_POWER : 0.0);
         }
     }
 
     private void handleArm() {
-        // Left stick moves the base, right stick moves the elbow (middle joint).
-        // Because these are position servos (not continuous-rotation), we nudge
-        // a stored target position each loop rather than setting power directly.
-        double baseStick  = gamepad2.left_stick_y;
-        double elbowStick = -gamepad2.right_stick_y;
-
-        if (Math.abs(baseStick) > JOYSTICK_DEADZONE && armBaseServo != null) {
-            armBasePosition += baseStick * ARM_BASE_SERVO_SPEED;
-            armBasePosition = Range.clip(armBasePosition, 0.0, 1.0);
-            armBaseServo.setPosition(armBasePosition);
+        // Left stick Y drives the elbow motor. BRAKE holds the arm when the stick is released.
+        if (armElbowMotor != null) {
+            double elbowStick = -gamepad2.left_stick_y;
+            double elbowPower = Math.abs(elbowStick) > JOYSTICK_DEADZONE
+                    ? elbowStick * ARM_ELBOW_POWER
+                    : 0.0;
+            armElbowMotor.setPower(elbowPower);
         }
 
-        if (Math.abs(elbowStick) > JOYSTICK_DEADZONE && armElbowServo != null) {
-            armElbowPosition += elbowStick * ARM_ELBOW_SERVO_SPEED;
-            armElbowPosition = Range.clip(armElbowPosition, 0.0, 1.0);
-            armElbowServo.setPosition(armElbowPosition);
-        }
-
-        // A opens the claw, B closes it.
+        // A closes the claw, B opens it.
         if (armClawServo != null) {
             if (gamepad2.a) {
                 armClawServo.setPosition(CLAW_CLOSED_POSITION);
@@ -224,24 +260,13 @@ public class GamePad extends OpMode {
     }
 
     private void updateTelemetry() {
-        if (distanceSensor != null) {
-            double distanceCM = distanceSensor.getDistance(DistanceUnit.CM);
-            telemetry.addData("Distance (cm)", "%.1f", distanceCM);
-            if (distanceCM < CLOSE_OBJECT_THRESHOLD_CM) {
-                telemetry.addLine("Warning: object very close!");
-            }
-        }
+        telemetry.addData("Intake", intakeOn ? "ON" : "OFF");
+        telemetry.addData("Launcher Motor", launcherOn ? "ON" : "OFF");
 
-        if (launcherServo != null) {
-            // This is the last commanded position, not a physical reading
-            telemetry.addData("Launcher Servo Commanded Position", launcherServo.getPosition());
-        }
+        telemetry.addData("Feeder", feederOn ? "ON" : "OFF");
 
-        if (armBaseServo != null) {
-            telemetry.addData("Arm Base Position", "%.2f", armBasePosition);
-        }
-        if (armElbowServo != null) {
-            telemetry.addData("Arm Elbow Position", "%.2f", armElbowPosition);
+        if (armElbowMotor != null) {
+            telemetry.addData("Elbow Power", "%.2f", armElbowMotor.getPower());
         }
         if (armClawServo != null) {
             telemetry.addData("Claw Commanded Position", armClawServo.getPosition());

@@ -1,3 +1,4 @@
+
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
@@ -13,14 +14,14 @@ public class robotAutonomousCode extends LinearOpMode {
     private DcMotor backLeft;
     private DcMotor backRight;
 
-    // Mechanism used to shoot (swap in your shooter motor if you have a separate one)
-    private DcMotor intake;
+    // Launcher motor
+    private DcMotor launcherMotor;
 
     private final ElapsedTime runtime = new ElapsedTime();
 
-    // ---- Tuning values ----
-    private static final double DRIVE_POWER = 1.0;
-    private static final double RETURN_POWER = 1.0;
+    // Tuning values
+    private static final double DRIVE_POWER = 0.3;
+    private static final double RETURN_POWER = 0.3;
     private static final double DRIVE_FORWARD_SECONDS = 1.0;
     private static final double SHOOT_WAIT_SECONDS = 4.0;
     private static final double SHOOT_POWER = 1.0;
@@ -29,76 +30,101 @@ public class robotAutonomousCode extends LinearOpMode {
     @Override
     public void runOpMode() {
 
-        // Hardware init
-        frontLeft = hardwareMap.get(DcMotor.class, "front_left_motor");
-        frontRight = hardwareMap.get(DcMotor.class, "front_right_motor");
-        backLeft = hardwareMap.get(DcMotor.class, "back_left_motor");
-        backRight = hardwareMap.get(DcMotor.class, "back_right_motor");
-        intake = hardwareMap.get(DcMotor.class, "intakeMotor");
+        // Initialize drive motors
+        frontLeft = hardwareMap.get(
+                DcMotor.class, "front_left_motor");
+        frontRight = hardwareMap.get(
+                DcMotor.class, "front_right_motor");
+        backLeft = hardwareMap.get(
+                DcMotor.class, "back_left_motor");
+        backRight = hardwareMap.get(
+                DcMotor.class, "back_right_motor");
 
-        // Left side reversed (same as the version where driving worked)
+        // Initialize launcher motor
+        launcherMotor = hardwareMap.get(
+                DcMotor.class, "launcherMotor");
+
+        // Set motor directions
         frontLeft.setDirection(DcMotor.Direction.REVERSE);
         backLeft.setDirection(DcMotor.Direction.REVERSE);
         frontRight.setDirection(DcMotor.Direction.FORWARD);
         backRight.setDirection(DcMotor.Direction.FORWARD);
 
-        // Hold position when power is zero
-        frontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        frontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        backLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        backRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        // Brake drive motors when stopped
+        frontLeft.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+        frontRight.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+        backLeft.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+        backRight.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
 
-        intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        intake.setPower(0);
+        // Configure launcher
+        launcherMotor.setDirection(DcMotor.Direction.FORWARD);
+        launcherMotor.setZeroPowerBehavior(
+                DcMotor.ZeroPowerBehavior.BRAKE);
+        launcherMotor.setMode(
+                DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        launcherMotor.setPower(0);
 
+        // Reset drive encoders
         resetDriveEncoders();
 
-        telemetry.addLine("Ready");
+        telemetry.addLine("Robot Ready");
+        telemetry.addLine("Waiting for Start");
         telemetry.update();
 
         waitForStart();
 
-        if (!opModeIsActive()) return;
+        if (!opModeIsActive()) {
+            stopAllMotors();
+            return;
+        }
 
-        // Remember where we started so we can return to exactly this spot
+        // Save the starting encoder positions
         int flStart = frontLeft.getCurrentPosition();
         int frStart = frontRight.getCurrentPosition();
         int blStart = backLeft.getCurrentPosition();
         int brStart = backRight.getCurrentPosition();
 
-        // 1) Drive forward for about one second
-        telemetry.addData("Step", "Driving forward");
+        // STEP 1: Drive forward
+        telemetry.addData("Step", "Driving Forward");
         telemetry.update();
 
         setDrivePower(DRIVE_POWER);
         waitSeconds(DRIVE_FORWARD_SECONDS);
         stopDrive();
 
-        // 2) Wait 4 seconds while shooting
+        // STEP 2: Run launcher for 4 seconds
         if (opModeIsActive()) {
-            telemetry.addData("Step", "Shooting");
+            telemetry.addData("Step", "Launching");
             telemetry.update();
 
-            intake.setPower(SHOOT_POWER);
+            launcherMotor.setPower(SHOOT_POWER);
             waitSeconds(SHOOT_WAIT_SECONDS);
-            intake.setPower(0);
+            launcherMotor.setPower(0);
         }
 
-        // 3) Return to the starting position using encoders
+        // STEP 3: Return to starting encoder positions
         if (opModeIsActive()) {
             telemetry.addData("Step", "Returning");
             telemetry.update();
 
-            returnToPosition(flStart, frStart, blStart, brStart);
+            returnToPosition(
+                    flStart, frStart, blStart, brStart);
         }
 
+        // STEP 4: Stop all motors
         stopAllMotors();
 
         telemetry.addData("Step", "Done");
         telemetry.update();
     }
 
-    private void returnToPosition(int flTarget, int frTarget, int blTarget, int brTarget) {
+    private void returnToPosition(
+            int flTarget, int frTarget,
+            int blTarget, int brTarget) {
 
         frontLeft.setTargetPosition(flTarget);
         frontRight.setTargetPosition(frTarget);
@@ -110,10 +136,11 @@ public class robotAutonomousCode extends LinearOpMode {
         backLeft.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         backRight.setMode(DcMotor.RunMode.RUN_TO_POSITION);
 
-        // In RUN_TO_POSITION, power is always positive; the target sets the direction
+        // Positive power; encoder targets determine direction
         setDrivePower(RETURN_POWER);
 
         runtime.reset();
+
         while (opModeIsActive()
                 && runtime.seconds() < RETURN_TIMEOUT_SECONDS
                 && (frontLeft.isBusy()
@@ -121,11 +148,21 @@ public class robotAutonomousCode extends LinearOpMode {
                 || backLeft.isBusy()
                 || backRight.isBusy())) {
 
-            telemetry.addData("FL", "%d -> %d", frontLeft.getCurrentPosition(), flTarget);
-            telemetry.addData("FR", "%d -> %d", frontRight.getCurrentPosition(), frTarget);
-            telemetry.addData("BL", "%d -> %d", backLeft.getCurrentPosition(), blTarget);
-            telemetry.addData("BR", "%d -> %d", backRight.getCurrentPosition(), brTarget);
+            telemetry.addData("Front Left",
+                    "%d -> %d",
+                    frontLeft.getCurrentPosition(), flTarget);
+            telemetry.addData("Front Right",
+                    "%d -> %d",
+                    frontRight.getCurrentPosition(), frTarget);
+            telemetry.addData("Back Left",
+                    "%d -> %d",
+                    backLeft.getCurrentPosition(), blTarget);
+            telemetry.addData("Back Right",
+                    "%d -> %d",
+                    backRight.getCurrentPosition(), brTarget);
+
             telemetry.update();
+            idle();
         }
 
         stopDrive();
@@ -137,10 +174,14 @@ public class robotAutonomousCode extends LinearOpMode {
     }
 
     private void resetDriveEncoders() {
-        frontLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        frontRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        backLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        backRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        frontLeft.setMode(
+                DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        frontRight.setMode(
+                DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        backLeft.setMode(
+                DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        backRight.setMode(
+                DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
         frontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         frontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -161,13 +202,16 @@ public class robotAutonomousCode extends LinearOpMode {
 
     private void stopAllMotors() {
         stopDrive();
-        intake.setPower(0);
+        launcherMotor.setPower(0);
     }
 
     private void waitSeconds(double seconds) {
         runtime.reset();
-        while (opModeIsActive() && runtime.seconds() < seconds) {
+
+        while (opModeIsActive()
+                && runtime.seconds() < seconds) {
             idle();
         }
     }
 }
+

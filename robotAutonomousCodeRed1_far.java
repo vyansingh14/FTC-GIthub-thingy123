@@ -1,13 +1,17 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-@Autonomous(name = "robotAutonomousCodeBlue1_far", group = "Autonomous")
-public class robotAutonomousCodeBlue1_far extends LinearOpMode {
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+
+@Autonomous(name = "robotAutonomousCodeRed1_far", group = "Autonomous")
+public class robotAutonomousCodeRed1_far extends LinearOpMode {
 
     private DcMotor frontLeft;
     private DcMotor frontRight;
@@ -18,8 +22,13 @@ public class robotAutonomousCodeBlue1_far extends LinearOpMode {
     private CRServo feederServo;
 
     private DcMotor intakeMotor;
-    private CRServo intakeLeftServo;
-    private CRServo intakeRightServo;
+    private CRServo intakeServoLeft;
+    private CRServo intakeServoRight;
+
+    private IMU imu;
+
+    // Heading the robot is supposed to be facing: 0 = starting direction, positive = left
+    private double targetHeading = 0;
 
     private final ElapsedTime runtime = new ElapsedTime();
 
@@ -31,15 +40,20 @@ public class robotAutonomousCodeBlue1_far extends LinearOpMode {
             (COUNTS_PER_MOTOR_REV * GEAR_REDUCTION)
                     / (WHEEL_DIAMETER_INCHES * Math.PI);
 
-    private static final double LAUNCHER_POWER = 1.0;
-    private static final double FEEDER_POWER = 1.0;
-    private static final double SHOOT_SECONDS = 4.0;
+    private static final double LAUNCHER_POWER = 0.575;
+    private static final double FEEDER_POWER = -1.0;
+    private static final double SHOOT_SECONDS = 5.0;
 
     private static final double DRIVE_POWER = 0.5;
-    private static final double PRE_SHOOT_DRIVE_INCHES = 8.0;
+    private static final double PRE_SHOOT_DRIVE_INCHES = -9.45;
 
-    private static final double TURN_POWER = 0.5;
-    private static final double TURN_TIME_SECONDS = 0.8;
+    // IMU turning
+    private static final double TURN_POWER = 0.5;               // fastest turn power
+    private static final double TURN_MIN_POWER = 0.12;          // slowest power, so it never stalls near the target
+    private static final double TURN_KP = 0.02;                 // power per degree of error
+    private static final double TURN_TOLERANCE_DEGREES = 1.0;   // close enough
+    private static final double TURN_TIMEOUT_SECONDS = 3.0;
+    private static final double TURN_SETTLE_SECONDS = 0.25;    // pause before each turn so the robot stops rolling
 
     private static final double DRIVE_TIMEOUT_SECONDS = 10.0;
 
@@ -57,8 +71,15 @@ public class robotAutonomousCodeBlue1_far extends LinearOpMode {
         feederServo = hardwareMap.get(CRServo.class, "feederServo");
 
         intakeMotor = hardwareMap.get(DcMotor.class, "intakeMotor");
-        intakeLeftServo = hardwareMap.get(CRServo.class, "intakeLeftServo");
-        intakeRightServo = hardwareMap.get(CRServo.class, "intakeRightServo");
+        intakeServoLeft = hardwareMap.get(CRServo.class, "intakeServoLeft");
+        intakeServoRight = hardwareMap.get(CRServo.class, "intakeServoRight");
+
+        // IMU: Control Hub logo facing up, USB ports pointing toward the front of the robot
+        imu = hardwareMap.get(IMU.class, "imu");
+        imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(
+                RevHubOrientationOnRobot.LogoFacingDirection.UP,
+                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD)));
+        imu.resetYaw();
 
         frontLeft.setDirection(DcMotor.Direction.REVERSE);
         backLeft.setDirection(DcMotor.Direction.REVERSE);
@@ -77,8 +98,8 @@ public class robotAutonomousCodeBlue1_far extends LinearOpMode {
         feederServo.setDirection(CRServo.Direction.REVERSE);
         feederServo.setPower(0);
 
-        intakeLeftServo.setPower(0);
-        intakeRightServo.setPower(0);
+        intakeServoLeft.setPower(0);
+        intakeServoRight.setPower(0);
         intakeMotor.setPower(0);
 
         telemetry.addLine("Ready");
@@ -88,65 +109,18 @@ public class robotAutonomousCodeBlue1_far extends LinearOpMode {
 
         if (!opModeIsActive()) return;
 
-        // STEP 1: Drive forward 8 inches, then back up 0.5 inches
+        // STEP 1: Drive forward 5 inches
         driveForwardInches(PRE_SHOOT_DRIVE_INCHES, DRIVE_POWER);
-        driveForwardInches(-0.5, DRIVE_POWER);
 
-        // STEP 2: Launch (launcher and feeder together for 4 seconds)
+        // STEP 3: Launch (launcher and feeder together for 4 seconds)
         launcherMotor.setPower(LAUNCHER_POWER);
+        waitSeconds(2);
         feederServo.setPower(FEEDER_POWER);
 
         waitSeconds(SHOOT_SECONDS);
 
         launcherMotor.setPower(0);
         feederServo.setPower(0);
-
-        // STEP 3: Turn left
-        turnLeft(TURN_POWER, TURN_TIME_SECONDS);
-
-        // STEP 4: Drive forward 46 inches
-        driveForwardInches(46, DRIVE_POWER);
-
-        // STEP 5: Turn right
-        turnRight(TURN_POWER, TURN_TIME_SECONDS);
-
-        // STEP 6: Drive forward 45 inches
-        driveForwardInches(45, DRIVE_POWER);
-
-        // STEP 7: Strafe sideways 11 inches (right; use strafeLeftInches to go the other way)
-        strafeRightInches(11, DRIVE_POWER);
-
-        // STEP 8: Drive forward about 5 inches
-        driveForwardInches(5, DRIVE_POWER);
-
-        // STEP 9: Turn left 90 degrees
-        turnLeft(TURN_POWER, TURN_TIME_SECONDS);
-
-        // STEP 10: Drive forward 6.5 inches
-        driveForwardInches(6.5, DRIVE_POWER);
-
-        // STEP 11: Strafe sideways 1.5 inches (right) before the intakes turn on
-        strafeRightInches(1.5, DRIVE_POWER);
-
-        // STEP 12: Spin left intake servo, right intake servo, and intake motor for 4 seconds
-        intakeMotor.setPower(1.0);
-        intakeLeftServo.setPower(1.0);
-        intakeRightServo.setPower(1.0);
-
-        waitSeconds(INTAKE_SECONDS);
-
-        intakeMotor.setPower(0);
-        intakeLeftServo.setPower(0);
-        intakeRightServo.setPower(0);
-
-        // STEP 13: Back up 5 inches
-        driveForwardInches(-5, DRIVE_POWER);
-
-        // STEP 14: Turn right
-        turnRight(TURN_POWER, TURN_TIME_SECONDS);
-
-        // STEP 15: Drive forward 65 inches
-        driveForwardInches(65, DRIVE_POWER);
 
         stopAllMotors();
     }
@@ -237,32 +211,70 @@ public class robotAutonomousCodeBlue1_far extends LinearOpMode {
         strafeRightInches(-inches, power);
     }
 
-    // Left wheels backward, right wheels forward
-    private void turnLeft(double power, double seconds) {
+    // Turn left by this many degrees (measured with the IMU)
+    private void turnLeft(double degrees) {
+        turnToHeading(targetHeading + degrees);
+    }
 
-        frontLeft.setPower(-power);
-        backLeft.setPower(-power);
+    // Turn right by this many degrees (measured with the IMU)
+    private void turnRight(double degrees) {
+        turnToHeading(targetHeading - degrees);
+    }
 
-        frontRight.setPower(power);
-        backRight.setPower(power);
+    // Turn until the IMU heading matches the target heading. Targets are absolute,
+    // so a small error in one turn doesn't carry into the next one.
+    private void turnToHeading(double target) {
 
-        waitSeconds(seconds);
+        targetHeading = normalizeDegrees(target);
+
+        // Let the wheels stop completely so leftover forward motion doesn't carry into the turn
+        setDrivePower(0);
+        waitSeconds(TURN_SETTLE_SECONDS);
+
+        frontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        frontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        backLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        backRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        runtime.reset();
+
+        while (opModeIsActive() && runtime.seconds() < TURN_TIMEOUT_SECONDS) {
+
+            double error = normalizeDegrees(targetHeading - getHeading());
+
+            if (Math.abs(error) <= TURN_TOLERANCE_DEGREES) {
+                break;
+            }
+
+            // Slow down as it gets close; positive error means turn left
+            double power = Math.abs(error) * TURN_KP;
+            power = Math.max(TURN_MIN_POWER, Math.min(TURN_POWER, power));
+            power = Math.signum(error) * power;
+
+            frontLeft.setPower(-power);
+            backLeft.setPower(-power);
+            frontRight.setPower(power);
+            backRight.setPower(power);
+
+            telemetry.addData("Target heading", "%.1f", targetHeading);
+            telemetry.addData("Heading", "%.1f", getHeading());
+            telemetry.update();
+            idle();
+        }
 
         setDrivePower(0);
     }
 
-    // Left wheels forward, right wheels backward
-    private void turnRight(double power, double seconds) {
+    // Robot heading in degrees: 0 at start, positive = turned left
+    private double getHeading() {
+        return imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+    }
 
-        frontLeft.setPower(power);
-        backLeft.setPower(power);
-
-        frontRight.setPower(-power);
-        backRight.setPower(-power);
-
-        waitSeconds(seconds);
-
-        setDrivePower(0);
+    // Wrap an angle into the range -180 to 180
+    private double normalizeDegrees(double degrees) {
+        while (degrees > 180) degrees -= 360;
+        while (degrees <= -180) degrees += 360;
+        return degrees;
     }
 
     private void setDrivePower(double power) {
@@ -279,8 +291,8 @@ public class robotAutonomousCodeBlue1_far extends LinearOpMode {
         feederServo.setPower(0);
 
         intakeMotor.setPower(0);
-        intakeLeftServo.setPower(0);
-        intakeRightServo.setPower(0);
+        intakeServoLeft.setPower(0);
+        intakeServoRight.setPower(0);
     }
 
     private void waitSeconds(double seconds) {

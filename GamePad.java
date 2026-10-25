@@ -28,9 +28,9 @@ public class GamePad extends OpMode {
     private static final double FEEDER_POWER = 1.0;
     // Launcher speed, picked with the gamepad1 d-pad. The choice stays until you pick another one:
     // d-pad up = fast, d-pad left or right = normal, d-pad down = slow.
-    private static final double LAUNCHER_POWER_FAST   = 1.0;
-    private static final double LAUNCHER_POWER_NORMAL = 0.75;
-    private static final double LAUNCHER_POWER_SLOW   = 0.5;
+    private static final double LAUNCHER_POWER_FAST   = 0.6;
+    private static final double LAUNCHER_POWER_NORMAL = 0.575;
+    private static final double LAUNCHER_POWER_SLOW   = 0.55;
 
     // ---- Tunable constants: arm ----
     // Elbow is a DC motor, so this is a power multiplier (0.0 to 1.0).
@@ -322,7 +322,7 @@ public class GamePad extends OpMode {
         telemetry.addData("Launcher (B)", launcherMotor == null
                 ? "MISSING - check config name"
                 : String.format("%s  %s mode  power %.2f",
-                        launcherOn ? "ON" : "OFF", launcherMode, launcherMotor.getPower()));
+                launcherOn ? "ON" : "OFF", launcherMode, launcherMotor.getPower()));
 
         telemetry.addData("Sticks fwd/strafe/rot", "%.2f / %.2f / %.2f",
                 -gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x);

@@ -80,6 +80,11 @@ public class GamePad extends OpMode {
 
     private boolean lastB = false;
     private boolean launcherOn = false;
+    // ---- Drive direction state ----
+    // Y on gamepad1 swaps which end of the robot is the "front" (the launcher/arm end).
+    private boolean lastY = false;
+    private boolean driveReversed = false;
+
     private double launcherPower = LAUNCHER_POWER_FAST; // starts in fast mode
     private String launcherMode = "FAST";
 
@@ -189,6 +194,19 @@ public class GamePad extends OpMode {
         double forward = -gamepad1.left_stick_y;
         double strafe  = gamepad1.left_stick_x;
         double rotate  = gamepad1.right_stick_x;
+
+        // Y toggles reverse mode. In reverse, the launcher/arm end is the front:
+        // pushing the stick up drives toward the launcher, and left/right strafe flip to match.
+        // Turning stays the same, since turning right is still turning right.
+        boolean yPressed = gamepad1.y && !lastY;
+        lastY = gamepad1.y;
+        if (yPressed) {
+            driveReversed = !driveReversed;
+        }
+        if (driveReversed) {
+            forward = -forward;
+            strafe  = -strafe;
+        }
 
         double frontLeftPower  = forward + strafe + rotate;
         double backLeftPower   = forward - strafe + rotate;
@@ -313,6 +331,7 @@ public class GamePad extends OpMode {
     private void updateTelemetry() {
         showMissingDevices();
 
+        telemetry.addData("Front (Y)", driveReversed ? "LAUNCHER END" : "INTAKE END");
         telemetry.addData("Intake", intakeOn ? "ON" : "OFF");
 
         // Shows the power actually being sent, or MISSING if the device never loaded.

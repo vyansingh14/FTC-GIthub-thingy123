@@ -10,8 +10,8 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
-@Autonomous(name = "robotAutonomousCodeRed1_far", group = "Autonomous")
-public class robotAutonomousCodeRed1_far extends LinearOpMode {
+@Autonomous(name = "robotAutonomousCodeRed1", group = "Autonomous")
+public class robotAutonomousCodeRed1 extends LinearOpMode {
 
     private DcMotor frontLeft;
     private DcMotor frontRight;
@@ -41,11 +41,13 @@ public class robotAutonomousCodeRed1_far extends LinearOpMode {
                     / (WHEEL_DIAMETER_INCHES * Math.PI);
 
     private static final double LAUNCHER_POWER = 0.575;
-    private static final double FEEDER_POWER = -1.0;
-    private static final double SHOOT_SECONDS = 5.0;
+    private static final double FEEDER_POWER = 1.0;
+    private static final int FEEDER_STEPS = 4;          // 4 spins of 90 degrees = one full 360 degree turn
+    private static final long FEEDER_PULSE_MS = 250;   // TUNE: how long the feeder spins to turn about 90 degrees
+    private static final long FEEDER_GAP_MS = 500;     // pause between feeder spins
 
     private static final double DRIVE_POWER = 0.5;
-    private static final double PRE_SHOOT_DRIVE_INCHES = -9.45;
+    private static final double PRE_SHOOT_DRIVE_INCHES = 5.0;
 
     // IMU turning
     private static final double TURN_POWER = 0.5;               // fastest turn power
@@ -109,18 +111,35 @@ public class robotAutonomousCodeRed1_far extends LinearOpMode {
 
         if (!opModeIsActive()) return;
 
-        // STEP 1: Drive forward 5 inches
-        driveForwardInches(PRE_SHOOT_DRIVE_INCHES, DRIVE_POWER);
+        // STEP 1: Back up 0.5 inches (no forward drive before shooting)
+        driveForwardInches(-0.5, DRIVE_POWER);
 
-        // STEP 3: Launch (launcher and feeder together for 4 seconds)
-        launcherMotor.setPower(LAUNCHER_POWER);
-        waitSeconds(2);
-        feederServo.setPower(FEEDER_POWER);
+        // STEP 2: Move backward 9.45 inches before shooting
+        driveForwardInches(-9.45, DRIVE_POWER);
 
-        waitSeconds(SHOOT_SECONDS);
+        // STEP 3: Launch (launcher spins while the feeder turns 90 degrees four times, with a 500 ms gap between turns)
+        shootWithPulsedFeeder();
 
-        launcherMotor.setPower(0);
-        feederServo.setPower(0);
+        // STEP 4: Turn right 90 degrees
+        turnRight(90);
+
+        // STEP 5: Drive forward 32 inches
+        driveForwardInches(32, DRIVE_POWER);
+
+        // STEP 6: Turn right 90 degrees
+        turnRight(90);
+
+        // STEP 7: Drive forward 90 inches
+        driveForwardInches(90, DRIVE_POWER);
+
+        // STEP 8: Strafe left 6 inches
+        strafeLeftInches(6, DRIVE_POWER);
+
+        // STEP 9: Drive forward 6 inches
+        driveForwardInches(6, DRIVE_POWER);
+
+        // STEP 10: Strafe left 6 more inches
+        strafeLeftInches(6, DRIVE_POWER);
 
         stopAllMotors();
     }
@@ -275,6 +294,26 @@ public class robotAutonomousCodeRed1_far extends LinearOpMode {
         while (degrees > 180) degrees -= 360;
         while (degrees <= -180) degrees += 360;
         return degrees;
+    }
+
+    // The launcher spins while the feeder turns 90 degrees at a time, with a gap between turns,
+    // until it has made one full 360 degree turn (FEEDER_STEPS spins). Then everything stops
+    // and the robot moves on.
+    private void shootWithPulsedFeeder() {
+
+        launcherMotor.setPower(LAUNCHER_POWER);
+
+        for (int i = 0; i < FEEDER_STEPS && opModeIsActive(); i++) {
+
+            feederServo.setPower(FEEDER_POWER);
+            sleep(FEEDER_PULSE_MS);
+
+            feederServo.setPower(0);
+            sleep(FEEDER_GAP_MS);
+        }
+
+        launcherMotor.setPower(0);
+        feederServo.setPower(0);
     }
 
     private void setDrivePower(double power) {

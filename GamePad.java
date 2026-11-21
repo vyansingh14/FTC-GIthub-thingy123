@@ -26,11 +26,12 @@ public class GamePad extends OpMode {
     // ---- Tunable constants: launcher ----
     // Feeder is a continuous servo: power from -1.0 to 1.0. Flip the sign if it spins the wrong way.
     private static final double FEEDER_POWER = 1.0;
-    // Launcher speed, picked with the gamepad1 d-pad. The choice stays until you pick another one:
-    // d-pad up = fast, d-pad left or right = normal, d-pad down = slow.
-    private static final double LAUNCHER_POWER_FAST   = 0.6;
-    private static final double LAUNCHER_POWER_NORMAL = 0.575;
-    private static final double LAUNCHER_POWER_SLOW   = 0.55;
+    // Launcher power, adjusted with the gamepad2 d-pad:
+    // each tap of d-pad up adds LAUNCHER_STEP, each tap of d-pad down subtracts it.
+    private static final double LAUNCHER_POWER_START = 0.6;  // power when the OpMode starts
+    private static final double LAUNCHER_STEP        = 0.02; // change per tap
+    private static final double LAUNCHER_POWER_MIN   = 0.0;
+    private static final double LAUNCHER_POWER_MAX   = 1.0;
 
     // ---- Tunable constants: arm ----
     // Elbow is a DC motor, so this is a power multiplier (0.0 to 1.0).
@@ -47,18 +48,21 @@ public class GamePad extends OpMode {
     // doesn't creep from stick drift when the joystick is released.
     private static final double JOYSTICK_DEADZONE = 0.05;
 
+    // How far the right trigger has to be squeezed to count as a press (0.0 to 1.0).
+    private static final double TRIGGER_PRESS = 0.5;
+
     // ---- Hardware: drivetrain (gamepad1) ----
     private DcMotor motorFrontRight;
     private DcMotor motorFrontLeft;
     private DcMotor motorBackRight;
     private DcMotor motorBackLeft;
 
-    // ---- Hardware: intake (gamepad1) ----
+    // ---- Hardware: intake (gamepad2) ----
     private CRServo intakeServoLeft;  // optional: null if not found
     private CRServo intakeServoRight; // optional: null if not found
     private DcMotor intakeMotor;      // optional: null if not found
 
-    // ---- Hardware: launcher (gamepad1) ----
+    // ---- Hardware: launcher (gamepad2) ----
     private CRServo feederServo;   // optional: null if not found
     private DcMotor launcherMotor; // optional: null if not found
 
@@ -75,18 +79,19 @@ public class GamePad extends OpMode {
     private boolean intakeOn = false;
 
     // ---- Launcher state ----
-    private boolean lastA = false;
+    private boolean lastFeederButton = false;
     private boolean feederOn = false;
 
-    private boolean lastB = false;
+    private boolean lastTrigger = false;
     private boolean launcherOn = false;
     // ---- Drive direction state ----
     // Y on gamepad1 swaps which end of the robot is the "front" (the launcher/arm end).
     private boolean lastY = false;
     private boolean driveReversed = false;
 
-    private double launcherPower = LAUNCHER_POWER_FAST; // starts in fast mode
-    private String launcherMode = "FAST";
+    private double launcherPower = LAUNCHER_POWER_START;
+    private boolean lastDpadUp = false;
+    private boolean lastDpadDown = false;
 
     @Override
     public void init() {
@@ -181,7 +186,8 @@ public class GamePad extends OpMode {
 
     @Override
     public void loop() {
-        // gamepad1 drives, runs the intake and the launcher. gamepad2 only runs the arm and claw.
+        // gamepad1 = drivetrain only.
+        // gamepad2 = intake, feeder, launcher, arm and claw.
         driveMecanum();
         handleIntake();
         handleLauncher();
@@ -239,9 +245,9 @@ public class GamePad extends OpMode {
     }
 
     private void handleIntake() {
-        // X toggles the whole intake (both continuous servos + the intake motor) on and off.
-        boolean xPressed = gamepad1.x && !lastX;
-        lastX = gamepad1.x;
+        // gamepad2 X toggles the whole intake (both continuous servos + the intake motor) on and off.
+        boolean xPressed = gamepad2.x && !lastX;
+        lastX = gamepad2.x;
 
         if (xPressed) {
             intakeOn = !intakeOn;
@@ -254,11 +260,11 @@ public class GamePad extends OpMode {
     }
 
     private void handleLauncher() {
-        // A toggles the feeder on and off. It is separate from the intake (X).
-        boolean aPressed = gamepad1.a && !lastA;
-        lastA = gamepad1.a;
+        // gamepad2 Y toggles the feeder on and off. It is separate from the intake (X).
+        boolean feederPressed = gamepad2.y && !lastFeederButton;
+        lastFeederButton = gamepad2.y;
 
-        if (aPressed) {
+        if (feederPressed) {
             feederOn = !feederOn;
         }
 
@@ -266,25 +272,32 @@ public class GamePad extends OpMode {
             feederServo.setPower(isFeederRunning() ? FEEDER_POWER : 0.0);
         }
 
-        // B toggles the launcher motor on and off.
-        boolean bPressed = gamepad1.b && !lastB;
-        lastB = gamepad1.b;
+        // gamepad2 right trigger toggles the launcher motor on and off.
+        // (A and B on gamepad2 are already the claw.)
+        boolean triggerDown = gamepad2.right_trigger > TRIGGER_PRESS;
+        boolean triggerPressed = triggerDown && !lastTrigger;
+        lastTrigger = triggerDown;
 
-        if (bPressed) {
+        if (triggerPressed) {
             launcherOn = !launcherOn;
         }
 
-        // D-pad picks the launcher speed. It works whether the launcher is on or off.
-        if (gamepad1.dpad_up) {
-            launcherPower = LAUNCHER_POWER_FAST;
-            launcherMode = "FAST";
-        } else if (gamepad1.dpad_left || gamepad1.dpad_right) {
-            launcherPower = LAUNCHER_POWER_NORMAL;
-            launcherMode = "NORMAL";
-        } else if (gamepad1.dpad_down) {
-            launcherPower = LAUNCHER_POWER_SLOW;
-            launcherMode = "SLOW";
+        // gamepad2 d-pad up/down nudges the launcher power by LAUNCHER_STEP per tap.
+        // Holding the button only counts once; tap again for another step.
+        // Works whether the launcher is on or off.
+        boolean upPressed = gamepad2.dpad_up && !lastDpadUp;
+        lastDpadUp = gamepad2.dpad_up;
+        boolean downPressed = gamepad2.dpad_down && !lastDpadDown;
+        lastDpadDown = gamepad2.dpad_down;
+
+        if (upPressed) {
+            launcherPower += LAUNCHER_STEP;
+        } else if (downPressed) {
+            launcherPower -= LAUNCHER_STEP;
         }
+        // Keep it between MIN and MAX, and round to 2 decimals so it reads 0.62, not 0.6200000001.
+        launcherPower = Math.max(LAUNCHER_POWER_MIN, Math.min(LAUNCHER_POWER_MAX, launcherPower));
+        launcherPower = Math.round(launcherPower * 100.0) / 100.0;
 
         if (launcherMotor != null) {
             launcherMotor.setPower(launcherOn ? launcherPower : 0.0);
@@ -332,16 +345,16 @@ public class GamePad extends OpMode {
         showMissingDevices();
 
         telemetry.addData("Front (Y)", driveReversed ? "LAUNCHER END" : "INTAKE END");
-        telemetry.addData("Intake", intakeOn ? "ON" : "OFF");
+        telemetry.addData("Intake (GP2 X)", intakeOn ? "ON" : "OFF");
 
         // Shows the power actually being sent, or MISSING if the device never loaded.
-        telemetry.addData("Feeder (A)", feederServo == null
+        telemetry.addData("Feeder (GP2 Y)", feederServo == null
                 ? "MISSING - check config name/type"
                 : String.format("%s  power %.2f", isFeederRunning() ? "ON" : "OFF", feederServo.getPower()));
-        telemetry.addData("Launcher (B)", launcherMotor == null
+        telemetry.addData("Launcher (GP2 RT)", launcherMotor == null
                 ? "MISSING - check config name"
-                : String.format("%s  %s mode  power %.2f",
-                launcherOn ? "ON" : "OFF", launcherMode, launcherMotor.getPower()));
+                : String.format("%s  set to %.2f  (d-pad up/down)",
+                launcherOn ? "ON" : "OFF", launcherPower));
 
         telemetry.addData("Sticks fwd/strafe/rot", "%.2f / %.2f / %.2f",
                 -gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x);

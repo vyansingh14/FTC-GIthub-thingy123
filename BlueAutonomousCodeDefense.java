@@ -45,8 +45,8 @@ public class robotAutonomousPark extends LinearOpMode {
     private static final double START_DELAY_SECONDS = 0.0;
 
     // ---- Route (written for BLUE). forward: + is forward. strafe: + is right. All TUNE. ----
-    private static final double LEAVE_FORWARD_INCHES = 24.0;  // drive off the starting spot
-    private static final double PARK_STRAFE_INCHES = -24.0;   // slide over to the parking spot
+    private static final double LEAVE_FORWARD_INCHES = 12.0;  // drive off the starting spot
+    private static final double PARK_STRAFE_INCHES = -12.0;   // slide over to the parking spot
 
     @Override
     public void runOpMode() {

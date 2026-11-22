@@ -14,9 +14,9 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 /**
  * Autonomous, in this order:
  *   1. Shoot (the intake runs during the shot)
- *   2. Move backward
+ *   2. Move backward 8 inches
  *   3. Turn left
- *   4. Move forward about 24 inches
+ *   4. Move forward 8 inches
  *
  * The robot starts the shot from wherever it is placed, so line it up before the match.
  * TUNE anything marked TUNE on the real robot and FIELD.
@@ -66,9 +66,9 @@ public class robotAutonomousShootAndMove extends LinearOpMode {
     // ---- Moves ----
     private static final double DRIVE_POWER = 0.5;
     private static final double DRIVE_TIMEOUT_SECONDS = 10.0;
-    private static final double BACK_INCHES = 12.0;        // TUNE: how far to back up after shooting
-    private static final double TURN_LEFT_DEGREES = 90.0;  // TUNE: how far to turn left
-    private static final double FORWARD_INCHES = 24.0;     // drive forward about 24 inches
+    private static final double BACK_INCHES = 8.0;         // TUNE: how far to back up after shooting
+    private static final double TURN_LEFT_DEGREES = 90.0;  // TUNE: how far to turn left (degrees, not inches)
+    private static final double FORWARD_INCHES = 8.0;      // TUNE: how far to drive forward after the turn
 
     // ---- IMU turning ----
     private static final double TURN_POWER = 0.5;
@@ -133,13 +133,13 @@ public class robotAutonomousShootAndMove extends LinearOpMode {
         // STEP 1: Shoot, with the intake running
         shootWithIntake();
 
-        // STEP 2: Move backward
+        // STEP 2: Move backward 8 inches
         driveForwardInches(-BACK_INCHES, DRIVE_POWER);
 
         // STEP 3: Turn left
         turnToHeading(targetHeading + TURN_LEFT_DEGREES);
 
-        // STEP 4: Move forward about 24 inches
+        // STEP 4: Move forward 8 inches
         driveForwardInches(FORWARD_INCHES, DRIVE_POWER);
 
         stopAllMotors();
